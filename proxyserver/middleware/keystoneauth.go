@@ -21,12 +21,21 @@ type keystoneAuth struct {
 }
 
 func (ka *keystoneAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	identityMap := extractIdentity(r)
 	defer ka.next.ServeHTTP(w, r)
 	ctx := GetProxyContext(r)
+	if ctx.Authorize == nil {
+		ctx.Authorize = ka.authorize
+	}
 
 }
 
+func (ka *keystoneAuth) authorize(r *http.Request) {
+	// allow OPTIONS requests to proceed as normal
+	if r.Method == "OPTIONS" {
+		return true
+	}
+	identityMap := extractIdentity(r)
+}
 func extractIdentity(r *http.Request) map[string]string {
 	identity := make(map[string]string)
 	if r.Header.Get("X-Identity-Status") != "Confirmed" {
