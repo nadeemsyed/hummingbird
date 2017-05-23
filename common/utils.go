@@ -453,3 +453,11 @@ func CheckNameFormat(req *http.Request, name string, target string) (string, err
 	}
 	return name, nil
 }
+
+func SliceFromCSV(csv string) []string {
+	s := []string{}
+	for _, val := range strings.Split(csv, ",") {
+		s = append(s, strings.TrimSpace(val))
+	}
+	return s
+}

@@ -18,6 +18,7 @@ package common
 import (
 	"bytes"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -297,4 +298,26 @@ func TestNoEmptyName(t *testing.T) {
 	require.NotNil(t, err)
 	require.Contains(t, err.Error(), "ignored name cannot be empty")
 	require.Equal(t, checked, "")
+}
+
+func TestSliceFromCSV(t *testing.T) {
+	var tests = []struct {
+		s        string   // input
+		expected []string // expected result
+	}{
+		{"", []string{""}},
+		{"fdfd", []string{"fdfd"}},
+		{"fd,fd", []string{"fd", "fd"}},
+		{"fd,   fd", []string{"fd", "fd"}},
+		{" fd  , fd ", []string{"fd", "fd"}},
+		{"fd fd", []string{"fd fd"}},
+		{"fd,fd, fdf", []string{"fd", "fd", "fdf"}},
+	}
+
+	for _, tt := range tests {
+		actual := SliceFromCSV(tt.s)
+		if !reflect.DeepEqual(actual, tt.expected) {
+			t.Errorf("SliceFromCSV(%v): expected %v, actual %v", tt.s, tt.expected, actual)
+		}
+	}
 }

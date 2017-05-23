@@ -105,6 +105,7 @@ type ProxyContext struct {
 	*ProxyContextMiddleware
 	C                  client.ProxyClient
 	Authorize          AuthorizeFunc
+	AuthorizeOverride  bool
 	Logger             srv.LowLevelLogger
 	containerInfoCache map[string]*client.ContainerInfo
 	accountInfoCache   map[string]*AccountInfo
@@ -270,6 +271,7 @@ func (ctx *ProxyContext) Subrequest(method, path string, body io.Reader, writer 
 	newctx := &ProxyContext{
 		ProxyContextMiddleware: ctx.ProxyContextMiddleware,
 		Authorize:              ctx.Authorize,
+		AuthorizeOverride:      ctx.AuthorizeOverride,
 		Logger:                 ctx.Logger,
 		containerInfoCache:     ctx.containerInfoCache,
 		accountInfoCache:       ctx.accountInfoCache,
@@ -313,6 +315,7 @@ func (m *ProxyContextMiddleware) ServeHTTP(writer http.ResponseWriter, request *
 	ctx := &ProxyContext{
 		ProxyContextMiddleware: m,
 		Authorize:              nil,
+		AuthorizeOverride:      false,
 		Logger:                 logr,
 		containerInfoCache:     make(map[string]*client.ContainerInfo),
 		accountInfoCache:       make(map[string]*AccountInfo),
