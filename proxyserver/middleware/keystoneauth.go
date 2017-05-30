@@ -16,27 +16,27 @@
 package middleware
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/troubling/hummingbird/common"
 	"github.com/troubling/hummingbird/common/conf"
-	"github.com/troubling/hummingbird/common/srv"
+	"go.uber.org/zap"
 )
 
 type keystoneAuth struct {
 	resellerPrefixes  []string
 	accountRules      map[string]map[string][]string
 	resellerAdminRole string
+	next              http.Handler
 }
 
 func (ka *keystoneAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	identityMap := extractIdentity(r)
 	defer ka.next.ServeHTTP(w, r)
 	ctx := GetProxyContext(r)
-
-	if ctx.AuthorizeOveride {
-		return
-	}
 	if len(identityMap) == 0 {
 		if ctx.Authorize == nil {
 			ctx.Authorize = ka.authorizeAnonymous
@@ -45,139 +45,169 @@ func (ka *keystoneAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if ctx.Authorize == nil {
 			ctx.Authorize = ka.authorize
 		}
-		userRoles = SliceFromCSV(identityMap["roles"])
+		userRoles := common.SliceFromCSV(identityMap["roles"])
 		for _, r := range userRoles {
 			if ka.resellerAdminRole == strings.ToLower(r) {
-				ctx.ResellerRequest = True
+				ctx.ResellerRequest = true
 				break
 			}
 		}
 	}
 }
 
+func (ka *keystoneAuth) accountMatchesTenant(account string, tenantID string) bool {
+	for _, prefix := range ka.resellerPrefixes {
+		if fmt.Sprintf("%s%s", prefix, tenantID) == account {
+			return true
+		}
+	}
+	return false
+}
+
+func (ka *keystoneAuth) setProjectDomainID(r *http.Request, pathParts map[string]string, identityMap map[string]string) {
+	for k := range r.Header {
+		if k == "X-Account-Sysmeta-Project-Domain-ID" {
+			return
+		}
+	}
+	if pathParts["obj"] != "" || (pathParts["container"] != "" && r.Method != "PUT") ||
+		common.StringInSlice(r.Method, []string{"PUT", "POST"}) {
+		return
+	}
+	tenantID := identityMap["tenantID"]
+	ctx := GetProxyContext(r)
+	sysmetaID := ctx.GetAccountInfo(pathParts["account"]).SysMetadata["Project-Domain-ID"]
+	reqID, newID := "", ""
+	if ka.accountMatchesTenant(pathParts["account"], tenantID) {
+		reqID = identityMap["projectDomainID"]
+		newID = reqID
+	}
+	if sysmetaID == "" && reqID == "default" {
+		newID = reqID
+	}
+	if newID != "" {
+		r.Header.Set("X-Account-Sysmeta-Project-Domain-ID", newID)
+	}
+}
+
+func (ka *keystoneAuth) authorizeCrossTenant(userID string, userName string,
+	tenantID string, tenantName string, roles []string) string {
+	tenantMatch := []string{tenantID, "*"}
+	userMatch := []string{userID, "*"}
+	for _, tenant := range tenantMatch {
+		for _, user := range userMatch {
+			s := fmt.Sprintf("%s:%s", tenant, user)
+			if common.StringInSlice(s, roles) {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
 func (ka *keystoneAuth) authorize(r *http.Request) bool {
+	identityMap := extractIdentity(r)
+	ctx := GetProxyContext(r)
+
+	tenantID := identityMap["tenantID"]
+	tenantName := identityMap["tenantName"]
+	userID := identityMap["userID"]
+	userName := identityMap["userName"]
+
+	referrers, roles := ParseACL(ctx.ACL)
+
 	// allow OPTIONS requests to proceed as normal
 	if r.Method == "OPTIONS" {
 		return true
 	}
-	identityMap := extractIdentity(r)
+	pathParts, err := common.ParseProxyPath(r.URL.Path)
+	if err != nil {
+		ctx.Logger.Error("Unable to parse URL", zap.Error(err))
+		return false
+	}
 
-	// # Cleanup - make sure that a previously set swift_owner setting is
-	//        # cleared now. This might happen for example with COPY requests.
-	//        req.environ.pop('swift_owner', None)
+	ka.setProjectDomainID(r, pathParts, identityMap)
+	userRoles := []string{}
+	for _, userRole := range common.SliceFromCSV(identityMap["roles"]) {
+		userRoles = append(userRoles, strings.ToLower(userRole))
+	}
+	if common.StringInSlice(ka.resellerAdminRole, userRoles) {
+		ctx.Logger.Debug("User has reseller admin authorization", zap.String("userid", tenantID))
+		return true
+	}
 
-	//        tenant_id, tenant_name = env_identity['tenant']
-	//        user_id, user_name = env_identity['user']
-	//        referrers, roles = swift_acl.parse_acl(getattr(req, 'acl', None))
+	if pathParts["container"] == "" && pathParts["object"] == "" &&
+		r.Method == "DELETE" {
+		ctx.Logger.Debug("User is not allowed to delete its own account",
+			zap.String("tenantName", tenantName),
+			zap.String("userName", userName))
+		return false
+	}
+	matchedACL := ""
+	if len(roles) > 0 {
+		matchedACL = ka.authorizeCrossTenant(userID, userName, tenantID, tenantName, roles)
+	}
+	if matchedACL != "" {
+		ctx.Logger.Debug("user allowed in ACL authorizing", zap.String("user", matchedACL))
+		return true
+	}
 
-	//        # allow OPTIONS requests to proceed as normal
-	//        if req.method == 'OPTIONS':
-	//            return
+	isAuthorized, authErr := ka.authorizeUnconfirmedIdentity(r, pathParts, referrers, roles)
 
-	//        try:
-	//            part = req.split_path(1, 4, True)
-	//            version, account, container, obj = part
-	//        except ValueError:
-	//            return HTTPNotFound(request=req)
+	if isAuthorized {
+		return true
+	}
 
-	//        self._set_project_domain_id(req, part, env_identity)
+	if !ka.accountMatchesTenant(pathParts["account"], tenantID) {
+		return false
+	}
+	accountPrefix, _ := ka.getAccountPrefix(pathParts["account"])
+	operatorRoles := ka.accountRules[accountPrefix]["operator_roles"]
+	haveOperatorRole := false
+	for _, or := range operatorRoles {
+		if common.StringInSlice(or, userRoles) {
+			haveOperatorRole = true
+			break
+		}
+	}
+	serviceRoles := ka.accountRules[accountPrefix]["service_roles"]
+	haveServiceRole := false
+	for _, or := range serviceRoles {
+		if common.StringInSlice(or, userRoles) {
+			haveServiceRole = true
+			break
+		}
+	}
+	allowed := false
+	if haveOperatorRole && (len(serviceRoles) > 0 && haveServiceRole) {
+		allowed = true
+	} else if haveOperatorRole && !haveServiceRole {
+		allowed = true
+	}
+	if allowed {
+		return true
+	}
+	if !isAuthorized && authErr == nil {
+		return false
+	}
 
-	//        user_roles = [r.lower() for r in env_identity.get('roles', [])]
-	//        user_service_roles = [r.lower() for r in env_identity.get(
-	//                              'service_roles', [])]
+	for _, role := range roles {
+		if common.StringInSlice(role, userRoles) {
+			return true
+		}
 
-	//        # Give unconditional access to a user with the reseller_admin
-	//        # role.
-	//        if self.reseller_admin_role in user_roles:
-	//            msg = 'User %s has reseller admin authorizing'
-	//            self.logger.debug(msg, tenant_id)
-	//            req.environ['swift_owner'] = True
-	//            return
-
-	//        # If we are not reseller admin and user is trying to delete its own
-	//        # account then deny it.
-	//        if not container and not obj and req.method == 'DELETE':
-	//            # User is not allowed to issue a DELETE on its own account
-	//            msg = 'User %s:%s is not allowed to delete its own account'
-	//            self.logger.debug(msg, tenant_name, user_name)
-	//            return self.denied_response(req)
-
-	//        # cross-tenant authorization
-	//        matched_acl = None
-	//        if roles:
-	//            allow_names = self._is_name_allowed_in_acl(req, part, env_identity)
-	//            matched_acl = self._authorize_cross_tenant(user_id, user_name,
-	//                                                       tenant_id, tenant_name,
-	//                                                       roles, allow_names)
-	//        if matched_acl is not None:
-	//            log_msg = 'user %s allowed in ACL authorizing.'
-	//            self.logger.debug(log_msg, matched_acl)
-	//            return
-
-	//        acl_authorized = self._authorize_unconfirmed_identity(req, obj,
-	//                                                              referrers,
-	//                                                              roles)
-	//        if acl_authorized:
-	//            return
-
-	//        # Check if a user tries to access an account that does not match their
-	//        # token
-	//        if not self._account_matches_tenant(account, tenant_id):
-	//            log_msg = 'tenant mismatch: %s != %s'
-	//            self.logger.debug(log_msg, account, tenant_id)
-	//            return self.denied_response(req)
-
-	//        # Compare roles from tokens against the configuration options:
-	//        #
-	//        # X-Auth-Token role  Has specified  X-Service-Token role  Grant
-	//        # in operator_roles? service_roles? in service_roles?     swift_owner?
-	//        # ------------------ -------------- --------------------  ------------
-	//        # yes                yes            yes                   yes
-	//        # yes                yes            no                    no
-	//        # yes                no             don't care            yes
-	//        # no                 don't care     don't care            no
-	//        # ------------------ -------------- --------------------  ------------
-	//        account_prefix = self._get_account_prefix(account)
-	//        operator_roles = self.account_rules[account_prefix]['operator_roles']
-	//        have_operator_role = set(operator_roles).intersection(
-	//            set(user_roles))
-	//        service_roles = self.account_rules[account_prefix]['service_roles']
-	//        have_service_role = set(service_roles).intersection(
-	//            set(user_service_roles))
-	//        allowed = False
-	//        if have_operator_role and (service_roles and have_service_role):
-	//            allowed = True
-	//        elif have_operator_role and not service_roles:
-	//            allowed = True
-	//        if allowed:
-	//            log_msg = 'allow user with role(s) %s as account admin'
-	//            self.logger.debug(log_msg, ','.join(have_operator_role.union(
-	//                                                have_service_role)))
-	//            req.environ['swift_owner'] = True
-	//            return
-
-	//        if acl_authorized is not None:
-	//            return self.denied_response(req)
-
-	//        # Check if we have the role in the userroles and allow it
-	//        for user_role in user_roles:
-	//            if user_role in (r.lower() for r in roles):
-	//                log_msg = 'user %s:%s allowed in ACL: %s authorizing'
-	//                self.logger.debug(log_msg, tenant_name, user_name,
-	//                                  user_role)
-	//                return
-
-	//        return self.denied_response(req)
+	}
+	return false
 }
 
 func (ka *keystoneAuth) getAccountPrefix(account string) (string, bool) {
 	// Empty prefix matches everything, so try to match others first
-	for prefix := range ka.resellerPrefixes {
+	for _, prefix := range ka.resellerPrefixes {
 		if prefix != "" && strings.HasPrefix(account, prefix) {
 			return prefix, true
 		}
 	}
-	for prefix := range ka.resellerPrefixes {
+	for _, prefix := range ka.resellerPrefixes {
 		if prefix == "" {
 			return "", true
 		}
@@ -186,10 +216,11 @@ func (ka *keystoneAuth) getAccountPrefix(account string) (string, bool) {
 }
 
 func (ka *keystoneAuth) authorizeAnonymous(r *http.Request) bool {
+	ctx := GetProxyContext(r)
 	pathParts, err := common.ParseProxyPath(r.URL.Path)
 	if err != nil {
-		srv.StandardResponse(writer, 404)
-		return
+		ctx.Logger.Error("Unable to parse URL", zap.Error(err))
+		return false
 	}
 	// allow OPTIONS requests to proceed as normal
 	if r.Method == "OPTIONS" {
@@ -204,33 +235,33 @@ func (ka *keystoneAuth) authorizeAnonymous(r *http.Request) bool {
 		}
 	}
 	if !isAuthorized {
-		srv.StandardResponse(writer, 401)
-		return
+		return false
 	}
-	ctx := GetProxyContext(r)
+
 	referrers, roles := ParseACL(ctx.ACL)
-	isAuthorized = ka.authorizeUnconfirmedIdentity(r, pathParts, referrers, roles)
+	isAuthorized, _ = ka.authorizeUnconfirmedIdentity(r, pathParts, referrers, roles)
 
 	if !isAuthorized {
-		srv.StandardResponse(writer, 401)
-		return
+		return false
 	}
+	return true
 }
 
-func (ka *keystoneAuth) authorizeUnconfirmedIdentity(r *http.Request, pathParts map[string]string, referrers []string, roles []string) bool {
+func (ka *keystoneAuth) authorizeUnconfirmedIdentity(r *http.Request, pathParts map[string]string, referrers []string, roles []string) (bool, error) {
 	ctx := GetProxyContext(r)
 	// Allow container Sync
 	if ci := ctx.GetContainerInfo(pathParts["account"], pathParts["container"]); ci != nil {
 		if ci.SyncKey == r.Header.Get("X-Container-Sync-Key") && r.Header.Get("X-Timestamp") != "" {
-			return true
+			return true, nil
 		}
 	}
-	if ReferrerAllowed(r.Referer(), referrerACL) {
+	if ReferrerAllowed(r.Referer(), referrers) {
 		if pathParts["obj"] != "" || common.StringInSlice(".rlistings", roles) {
-			return true
+			return true, nil
 		}
+		return false, nil
 	}
-	return false
+	return false, errors.New("unable to confirm identity")
 }
 
 func extractIdentity(r *http.Request) map[string]string {
@@ -258,7 +289,7 @@ func NewKeystoneAuth(config conf.Section) (func(http.Handler) http.Handler, erro
 		"service_roles": {}}
 	resellerPrefixes, accountRules := conf.ReadResellerOptions(config, defaultRules)
 	return func(next http.Handler) http.Handler {
-		return &authToken{
+		return &keystoneAuth{
 			next:              next,
 			resellerPrefixes:  resellerPrefixes,
 			accountRules:      accountRules,
