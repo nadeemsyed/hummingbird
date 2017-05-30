@@ -457,7 +457,18 @@ func CheckNameFormat(req *http.Request, name string, target string) (string, err
 func SliceFromCSV(csv string) []string {
 	s := []string{}
 	for _, val := range strings.Split(csv, ",") {
-		s = append(s, strings.TrimSpace(val))
+		if strings.TrimSpace(val) != "" {
+			s = append(s, strings.TrimSpace(val))
+		}
 	}
 	return s
+}
+
+func StringInSlice(s string, slice []string) bool {
+	for _, x := range slice {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }

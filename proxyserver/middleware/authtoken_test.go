@@ -33,7 +33,7 @@ import (
 	"github.com/troubling/hummingbird/common/test"
 )
 
-func NewFakeProxyContext() *ProxyContext {
+func newFakeProxyContext() *ProxyContext {
 	return &ProxyContext{
 		Logger:                 zap.NewNop(),
 		ProxyContextMiddleware: &ProxyContextMiddleware{Cache: &test.FakeMemcacheRing{}},
@@ -64,7 +64,7 @@ func fakeIdentityServer(statusPost int, statusGet int, body string) *httptest.Se
 
 func TestSpoofBlock(t *testing.T) {
 	rec := httptest.NewRecorder()
-	fakeContext := NewFakeProxyContext()
+	fakeContext := newFakeProxyContext()
 	req, err := http.NewRequest("GET", "/someurl", nil)
 	require.Nil(t, err)
 	req.Header.Add("X-Identity-Status", "Confirmed")
@@ -91,7 +91,7 @@ func TestSpoofBlock(t *testing.T) {
 
 func TestNoToken(t *testing.T) {
 	rec := httptest.NewRecorder()
-	fakeContext := NewFakeProxyContext()
+	fakeContext := newFakeProxyContext()
 	req, err := http.NewRequest("GET", "/someurl", nil)
 	require.Nil(t, err)
 

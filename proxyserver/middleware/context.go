@@ -106,6 +106,8 @@ type ProxyContext struct {
 	C                  client.ProxyClient
 	Authorize          AuthorizeFunc
 	AuthorizeOverride  bool
+	ResellerRequest    bool
+	ACL                string
 	Logger             srv.LowLevelLogger
 	containerInfoCache map[string]*client.ContainerInfo
 	accountInfoCache   map[string]*AccountInfo
@@ -169,6 +171,12 @@ func (ctx *ProxyContext) GetContainerInfo(account, container string) *client.Con
 				ci.Metadata[k[17:]] = headers.Get(k)
 			} else if strings.HasPrefix(k, "X-Container-Sysmeta-") {
 				ci.SysMetadata[k[20:]] = headers.Get(k)
+			} else if k == "X-Container-Read" {
+				ci.ReadACL = headers.Get(k)
+			} else if k == "X-Container-Write" {
+				ci.WriteACL = headers.Get(k)
+			} else if k == "X-Container-Sync-Key" {
+				ci.SyncKey = headers.Get(k)
 			}
 		}
 		ctx.Cache.Set(key, ci, 30)

@@ -305,13 +305,14 @@ func TestSliceFromCSV(t *testing.T) {
 		s        string   // input
 		expected []string // expected result
 	}{
-		{"", []string{""}},
+		{"", []string{}},
 		{"fdfd", []string{"fdfd"}},
 		{"fd,fd", []string{"fd", "fd"}},
 		{"fd,   fd", []string{"fd", "fd"}},
 		{" fd  , fd ", []string{"fd", "fd"}},
 		{"fd fd", []string{"fd fd"}},
 		{"fd,fd, fdf", []string{"fd", "fd", "fdf"}},
+		{"fd,,fd", []string{"fd", "fd"}},
 	}
 
 	for _, tt := range tests {

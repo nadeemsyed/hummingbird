@@ -15,30 +15,69 @@
 
 package middleware
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+
+	"github.com/troubling/hummingbird/common/conf"
+	"github.com/troubling/hummingbird/common/srv"
+)
 
 type keystoneAuth struct {
+	resellerPrefixes  []string
+	accountRules      map[string]map[string][]string
+	resellerAdminRole string
 }
 
 func (ka *keystoneAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	identityMap := extractIdentity(r)
 	defer ka.next.ServeHTTP(w, r)
 	ctx := GetProxyContext(r)
-	if ctx.Authorize == nil {
-		ctx.Authorize = ka.authorize
-	}
 
+	if ctx.AuthorizeOveride {
+		return
+	}
+	if len(identityMap) == 0 {
+		if ctx.Authorize == nil {
+			ctx.Authorize = ka.authorizeAnonymous
+		}
+	} else {
+		if ctx.Authorize == nil {
+			ctx.Authorize = ka.authorize
+		}
+		userRoles = SliceFromCSV(identityMap["roles"])
+		for _, r := range userRoles {
+			if ka.resellerAdminRole == strings.ToLower(r) {
+				ctx.ResellerRequest = True
+				break
+			}
+		}
+	}
 }
 
-func (ka *keystoneAuth) authorize(r *http.Request) {
+func (ka *keystoneAuth) authorize(r *http.Request) bool {
 	// allow OPTIONS requests to proceed as normal
 	if r.Method == "OPTIONS" {
 		return true
 	}
 	identityMap := extractIdentity(r)
 }
+
+func (ka *keystoneAuth) authorizeAnonymous(r *http.Request) bool {
+	// allow OPTIONS requests to proceed as normal
+	if r.Method == "OPTIONS" {
+		return true
+	}
+	pathParts, err := common.ParseProxyPath(request.URL.Path)
+	if err != nil {
+		srv.StandardResponse(writer, 400)
+		return
+	}
+}
+
 func extractIdentity(r *http.Request) map[string]string {
 	identity := make(map[string]string)
-	if r.Header.Get("X-Identity-Status") != "Confirmed" {
+	if r.Header.Get("X-Identity-Status") != "Confirmed" || r.Header.Get("X-Service-Identity-Status") != "Confirmed" {
 		return identity
 	}
 
@@ -47,6 +86,7 @@ func extractIdentity(r *http.Request) map[string]string {
 	identity["tenantID"] = r.Header.Get("X-Project-Id")
 	identity["tenantName"] = r.Header.Get("X-Project-Name")
 	identity["roles"] = r.Header.Get("X-Roles")
+	identity["serviceRoles"] = r.Header.Get("X-Service-Roles")
 	identity["userDomainID"] = r.Header.Get("X-User-Domain-ID")
 	identity["userDomainName"] = r.Header.Get("X-User-Domain-Name")
 	identity["projectDomainID"] = r.Header.Get("X-Project-Domain-ID")
@@ -56,9 +96,15 @@ func extractIdentity(r *http.Request) map[string]string {
 }
 
 func NewKeystoneAuth(config conf.Section) (func(http.Handler) http.Handler, error) {
+	defaultRules := map[string][]string{"operator_roles": {"admin", "swiftoperator"},
+		"service_roles": {}}
+	resellerPrefixes, accountRules := conf.ReadResellerOptions(config, defaultRules)
 	return func(next http.Handler) http.Handler {
 		return &authToken{
-			next: next,
+			next:              next,
+			resellerPrefixes:  resellerPrefixes,
+			accountRules:      accountRules,
+			resellerAdminRole: strings.ToLower(config.GetDefault("reseller_admin_role", "ResellerAdmin")),
 		}
 	}, nil
 }

@@ -181,6 +181,8 @@ func (at *authToken) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	removeAuthHeaders(r)
 	r.Header.Set("X-Identity-Status", "Invalid")
 	defer at.next.ServeHTTP(w, r)
+	//serviceToken := r.Header.Get("X-Service-Token")
+
 	authToken := r.Header.Get("X-Auth-Token")
 	if authToken == "" {
 		authToken = r.Header.Get("X-Storage-Token")
