@@ -58,7 +58,7 @@ func (t *TestServer) Close() {
 }
 
 func (t *TestServer) Do(method string, path string, body io.ReadCloser) (*http.Response, error) {
-	req, err := http.NewRequest(method, fmt.Sprintf("http://%s:%d%s", t.host, t.port, path), body)
+	req, err := http.NewRequest(method, fmt.Sprintf("https://%s:%d%s", t.host, t.port, path), body)
 	req.Header.Set("X-Backend-Storage-Policy-Index", "0")
 	if err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func TestBasicPutGet(t *testing.T) {
 	defer ts.Close()
 
 	timestamp := common.GetTimestamp()
-	req, err := http.NewRequest("PUT", fmt.Sprintf("http://%s:%d/sda/0/a/c/o", ts.host, ts.port), bytes.NewBuffer([]byte("SOME DATA")))
+	req, err := http.NewRequest("PUT", fmt.Sprintf("https://%s:%d/sda/0/a/c/o", ts.host, ts.port), bytes.NewBuffer([]byte("SOME DATA")))
 	assert.Nil(t, err)
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("Content-Length", "9")

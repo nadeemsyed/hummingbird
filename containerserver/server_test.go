@@ -687,7 +687,7 @@ func TestContainerVerifySync(t *testing.T) {
 			Name:     "realm1",
 			Key1:     "somekey",
 			Key2:     "someotherkey",
-			Clusters: map[string]string{"cluster1": "http://some/cluster/url"},
+			Clusters: map[string]string{"cluster1": "https://some/cluster/url"},
 		},
 	})
 

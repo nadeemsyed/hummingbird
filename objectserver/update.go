@@ -67,7 +67,7 @@ func (server *ObjectServer) expirerContainer(deleteAt time.Time, account, contai
 }
 
 func (server *ObjectServer) sendContainerUpdate(host, device, method, partition, account, container, obj string, headers http.Header) bool {
-	obj_url := fmt.Sprintf("http://%s/%s/%s/%s/%s/%s", host, device, partition,
+	obj_url := fmt.Sprintf("https://%s/%s/%s/%s/%s/%s", host, device, partition,
 		common.Urlencode(account), common.Urlencode(container), common.Urlencode(obj))
 	if req, err := http.NewRequest(method, obj_url, nil); err == nil {
 		req.Header = headers

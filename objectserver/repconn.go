@@ -159,7 +159,7 @@ func (r *repConn) Close() {
 }
 
 func NewRepConn(dev *ring.Device, partition string, policy int) (RepConn, error) {
-	url := fmt.Sprintf("http://%s:%d/%s/%s", dev.ReplicationIp, dev.ReplicationPort, dev.Device, partition)
+	url := fmt.Sprintf("https://%s:%d/%s/%s", dev.ReplicationIp, dev.ReplicationPort, dev.Device, partition)
 	req, err := http.NewRequest("REPCONN", url, nil)
 	req.Header.Set("X-Backend-Storage-Policy-Index", strconv.Itoa(policy))
 	if err != nil {

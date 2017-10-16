@@ -16,6 +16,7 @@
 package tools
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -178,7 +179,11 @@ func (dw *driveWatch) getDbAndLock() (*sql.DB, error) {
 func (dw *driveWatch) gatherReconData(servers []ipPort) (unmountedDevices map[string]ring.Device, downServers map[string]ipPort) {
 	downServers = make(map[string]ipPort)
 	unmountedDevices = make(map[string]ring.Device)
-	client := http.Client{Timeout: 10 * time.Second}
+	client := http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}}
 
 	for _, s := range servers {
 		serverUrl := fmt.Sprintf("http://%s:%d/recon/unmounted", s.ip, s.port)

@@ -17,6 +17,7 @@ package containerserver
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -98,7 +99,7 @@ func (rd *replicationDevice) sendReplicationMessage(dev *ring.Device, part uint6
 	if err != nil {
 		return 0, nil, err
 	}
-	req, err := http.NewRequest("REPLICATE", fmt.Sprintf("http://%s:%d/%s/%d/%s",
+	req, err := http.NewRequest("REPLICATE", fmt.Sprintf("https://%s:%d/%s/%d/%s",
 		dev.ReplicationIp, dev.ReplicationPort, dev.Device, part, ringHash), bytes.NewBuffer(body))
 	if err != nil {
 		return 0, nil, err
@@ -142,7 +143,7 @@ func (rd *replicationDevice) rsync(dev *ring.Device, c ReplicableContainer, part
 		return fmt.Errorf("Error opening databae: %v", err)
 	}
 	defer release()
-	req, err := http.NewRequest("PUT", fmt.Sprintf("http://%s:%d/%s/tmp/%s", dev.ReplicationIp, dev.ReplicationPort, dev.Device, tmpFilename), fp)
+	req, err := http.NewRequest("PUT", fmt.Sprintf("https://%s:%d/%s/tmp/%s", dev.ReplicationIp, dev.ReplicationPort, dev.Device, tmpFilename), fp)
 	if err != nil {
 		return fmt.Errorf("creating request: %v", err)
 	}
@@ -607,8 +608,9 @@ func GetReplicator(serverconf conf.Config, flags *flag.FlagSet) (srv.Daemon, srv
 		concurrencySem: make(chan struct{}, concurrency),
 		Ring:           ring,
 		client: &http.Client{
-			Timeout:   time.Minute * 15,
-			Transport: &http.Transport{Dial: (&net.Dialer{Timeout: time.Second}).Dial},
+			Timeout: time.Minute * 15,
+			Transport: &http.Transport{Dial: (&net.Dialer{Timeout: time.Second}).Dial,
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
 		},
 	}, logger, nil
 }

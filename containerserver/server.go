@@ -16,6 +16,7 @@
 package containerserver
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"encoding/xml"
 	"flag"
@@ -657,6 +658,7 @@ func GetServer(serverconf conf.Config, flags *flag.FlagSet) (bindIP string, bind
 			MaxIdleConns:        0,
 			IdleConnTimeout:     5 * time.Second,
 			DisableCompression:  true,
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 		},
 	}
 	return bindIP, bindPort, server, server.logger, nil

@@ -16,6 +16,7 @@
 package accountserver
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"encoding/xml"
 	"flag"
@@ -401,10 +402,22 @@ func (server *AccountServer) ContainerPutHandler(writer http.ResponseWriter, req
 }
 
 // HealthcheckHandler implements a basic health check, that just returns "OK".
-func (server *AccountServer) HealthcheckHandler(writer http.ResponseWriter, request *http.Request) {
-	writer.Header().Set("Content-Length", "2")
-	writer.WriteHeader(http.StatusOK)
-	writer.Write([]byte("OK"))
+func (server *AccountServer) HealthcheckHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintf(w, "Method: %s\n", r.Method)
+	fmt.Fprintf(w, "Protocol: %s\n", r.Proto)
+	fmt.Fprintf(w, "Host: %s\n", r.Host)
+	fmt.Fprintf(w, "RemoteAddr: %s\n", r.RemoteAddr)
+	fmt.Fprintf(w, "RequestURI: %q\n", r.RequestURI)
+	fmt.Fprintf(w, "URL: %#v\n", r.URL)
+	fmt.Fprintf(w, "Body.ContentLength: %d (-1 means unknown)\n", r.ContentLength)
+	fmt.Fprintf(w, "Close: %v (relevant for HTTP/1 only)\n", r.Close)
+	fmt.Fprintf(w, "TLS: %#v\n", r.TLS)
+	fmt.Fprintf(w, "\nHeaders:\n")
+	r.Header.Write(w)
+	// writer.Header().Set("Content-Length", "2")
+	// writer.WriteHeader(http.StatusOK)
+	// writer.Write([]byte("OK"))
 }
 
 // ReconHandler delegates incoming /recon calls to the common recon handler.
@@ -561,8 +574,9 @@ func GetServer(serverconf conf.Config, flags *flag.FlagSet) (bindIP string, bind
 	connTimeout := time.Duration(serverconf.GetFloat("app:account-server", "conn_timeout", 1.0) * float64(time.Second))
 	nodeTimeout := time.Duration(serverconf.GetFloat("app:account-server", "node_timeout", 10.0) * float64(time.Second))
 	server.updateClient = &http.Client{
-		Timeout:   nodeTimeout,
-		Transport: &http.Transport{Dial: (&net.Dialer{Timeout: connTimeout}).Dial},
+		Timeout: nodeTimeout,
+		Transport: &http.Transport{Dial: (&net.Dialer{Timeout: connTimeout}).Dial,
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
 	}
 	return bindIP, bindPort, server, server.logger, nil
 }

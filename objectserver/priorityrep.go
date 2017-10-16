@@ -17,6 +17,7 @@ package objectserver
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -73,7 +74,7 @@ func (d *devLimiter) waitForSomethingToFinish() {
 }
 
 func SendPriRepJob(job *PriorityRepJob, client *http.Client) (string, bool) {
-	url := fmt.Sprintf("http://%s:%d/priorityrep", job.FromDevice.ReplicationIp, job.FromDevice.ReplicationPort)
+	url := fmt.Sprintf("https://%s:%d/priorityrep", job.FromDevice.ReplicationIp, job.FromDevice.ReplicationPort)
 	jsonned, err := json.Marshal(job)
 	if err != nil {
 		return fmt.Sprintf("Failed to serialize job for some reason: %s", err), false
@@ -183,7 +184,10 @@ func MoveParts(args []string) {
 		fmt.Println("Unable to load current ring:", err)
 		return
 	}
-	client := &http.Client{Timeout: time.Hour}
+	client := &http.Client{Timeout: time.Hour,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}}
 	jobs := getPartMoveJobs(oldRing, curRing)
 	fmt.Println("Job count:", len(jobs))
 	doPriRepJobs(jobs, 2, client)
@@ -278,7 +282,11 @@ func RestoreDevice(args []string) {
 		}
 
 	}
-	client := &http.Client{Timeout: time.Hour}
+	client := &http.Client{
+		Timeout: time.Hour,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}}
 	badParts := []uint64{}
 	for {
 		jobs := getRestoreDeviceJobs(objRing, flags.Arg(0), flags.Arg(1), *sameRegion, badParts)
@@ -350,7 +358,11 @@ func RescueParts(args []string) {
 			return
 		}
 	}
-	client := &http.Client{Timeout: time.Hour}
+	client := &http.Client{
+		Timeout: time.Hour,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}}
 	jobs := getRescuePartsJobs(objRing, partsInt)
 	fmt.Println("Job count:", len(jobs))
 	doPriRepJobs(jobs, 1, client)

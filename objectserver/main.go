@@ -17,6 +17,7 @@ package objectserver
 
 import (
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -701,6 +702,7 @@ func GetServer(serverconf conf.Config, flags *flag.FlagSet) (bindIP string, bind
 			MaxIdleConns:        0,
 			IdleConnTimeout:     5 * time.Second,
 			DisableCompression:  true,
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 		},
 	}
 

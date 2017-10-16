@@ -18,6 +18,7 @@ package srv
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -268,7 +269,6 @@ func SetupLogger(prefix string, atomicLevel *zap.AtomicLevel, flags *flag.FlagSe
 
 type HummingbirdServer struct {
 	http.Server
-	Listener net.Listener
 	logger   LowLevelLogger
 	finalize func()
 }
@@ -343,12 +343,12 @@ func RunServers(GetServer func(conf.Config, *flag.FlagSet) (string, int, Server,
 				Handler:      server.GetHandler(config, metricsPrefix),
 				ReadTimeout:  24 * time.Hour,
 				WriteTimeout: 24 * time.Hour,
+				TLSConfig:    &tls.Config{},
 			},
-			Listener: sock,
 			logger:   logger,
 			finalize: server.Finalize,
 		}
-		go srv.Serve(sock)
+		go srv.ServeTLS(sock, "/etc/hummingbird/server.crt", "/etc/hummingbird/server.key")
 		servers = append(servers, &srv)
 		logger.Info("Server started", zap.Int("port", port))
 	}

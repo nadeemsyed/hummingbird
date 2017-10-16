@@ -16,6 +16,7 @@
 package objectserver
 
 import (
+	"crypto/tls"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -1041,8 +1042,12 @@ func NewReplicator(serverconf conf.Config, flags *flag.FlagSet) (srv.Daemon, srv
 		devices:                 make(map[string]bool),
 		partitions:              make(map[string]bool),
 		onceDone:                make(chan struct{}),
-		client:                  &http.Client{Timeout: time.Second * 60},
-		incomingSem:             make(map[string]chan struct{}),
+		client: &http.Client{
+			Timeout: time.Second * 60,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			}},
+		incomingSem: make(map[string]chan struct{}),
 		stats: map[string]map[string]*DeviceStats{
 			"object-replicator": {},
 			"object-updater":    {},

@@ -89,7 +89,7 @@ func (e *Environment) FileLocations(account, container, obj string, policy int) 
 // PutObject uploads an object "/a/c/o" to the indicated server with X-Timestamp set to timestamp and body set to data.
 func (e *Environment) PutObject(server int, timestamp string, data string, policy int) bool {
 	body := bytes.NewBuffer([]byte(data))
-	req, err := http.NewRequest("PUT", fmt.Sprintf("http://%s:%d/sda/0/a/c/o", e.hosts[server], e.ports[server]), body)
+	req, err := http.NewRequest("PUT", fmt.Sprintf("https://%s:%d/sda/0/a/c/o", e.hosts[server], e.ports[server]), body)
 	if err != nil {
 		return false
 	}
@@ -103,7 +103,7 @@ func (e *Environment) PutObject(server int, timestamp string, data string, polic
 
 // DeleteObject deletes the object.
 func (e *Environment) DeleteObject(server int, timestamp string, policy int) bool {
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://%s:%d/sda/0/a/c/o", e.hosts[server], e.ports[server]), nil)
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("https://%s:%d/sda/0/a/c/o", e.hosts[server], e.ports[server]), nil)
 	if err != nil {
 		return false
 	}
@@ -115,7 +115,7 @@ func (e *Environment) DeleteObject(server int, timestamp string, policy int) boo
 
 // ObjExists returns a boolean indicating that it can fetch the named object and that its X-Timestamp matches the timestamp argument.
 func (e *Environment) ObjExists(server int, timestamp string, policy int) bool {
-	req, err := http.NewRequest("HEAD", fmt.Sprintf("http://%s:%d/sda/0/a/c/o", e.hosts[server], e.ports[server]), nil)
+	req, err := http.NewRequest("HEAD", fmt.Sprintf("https://%s:%d/sda/0/a/c/o", e.hosts[server], e.ports[server]), nil)
 	if err != nil {
 		return false
 	}

@@ -47,7 +47,7 @@ func (server *ContainerServer) accountUpdate(writer http.ResponseWriter, request
 			return
 		}
 		for index, host := range hosts {
-			url := fmt.Sprintf("http://%s/%s/%s/%s/%s", host, devices[index], accpartition,
+			url := fmt.Sprintf("https://%s/%s/%s/%s/%s", host, devices[index], accpartition,
 				common.Urlencode(vars["account"]), common.Urlencode(vars["container"]))
 			req, err := http.NewRequest("PUT", url, nil)
 			if err != nil {

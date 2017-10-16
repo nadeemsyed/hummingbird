@@ -17,6 +17,7 @@ package middleware
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -372,6 +373,9 @@ func NewAuthToken(config conf.Section, metricsScope tally.Scope) (func(http.Hand
 				userAgent:       config.GetDefault("user_agent", "hummingbird-keystone-middleware/1.0"),
 				client: &http.Client{
 					Timeout: 5 * time.Second,
+					Transport: &http.Transport{
+						TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+					},
 				}},
 		}
 	}, nil

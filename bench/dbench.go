@@ -17,6 +17,7 @@ package bench
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -156,6 +157,7 @@ func RunDBench(args []string) {
 
 	client := &http.Client{
 		Transport: &http.Transport{
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 			MaxIdleConnsPerHost: 300,
 		},
 	}

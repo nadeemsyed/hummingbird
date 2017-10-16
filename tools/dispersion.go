@@ -17,6 +17,7 @@ package tools
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -225,7 +226,11 @@ func rescueLonelyPartition(policy int64, partition uint64, goodNode *ring.Device
 	if len(toNodes) == 0 {
 		toNodes = append(toNodes, moreNodes.Next())
 	}
-	c := http.Client{Timeout: time.Hour}
+	c := http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		Timeout: time.Hour}
 	tries := 1
 	for {
 		res, success := objectserver.SendPriRepJob(&objectserver.PriorityRepJob{
@@ -277,7 +282,11 @@ func (d *Dispersion) scanDispersionObjs(cancelChan chan struct{}) {
 		d.logger.Error("Could not get container listing", zap.Error(err))
 		return
 	}
-	dirClient := http.Client{Timeout: 10 * time.Second}
+	dirClient := http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}}
 
 	if len(cRecords) == 0 {
 		d.logger.Error("No dispersion containers found")
@@ -338,7 +347,7 @@ func (d *Dispersion) scanDispersionObjs(cancelChan chan struct{}) {
 				notFoundNodes := []*ring.Device{}
 
 				for _, device := range nodes {
-					url := fmt.Sprintf("http://%s:%d/%s/%d/%s/%s/%s", device.Ip, device.Port, device.Device, partition,
+					url := fmt.Sprintf("https://%s:%d/%s/%d/%s/%s/%s", device.Ip, device.Port, device.Device, partition,
 						common.Urlencode(AdminAccount), common.Urlencode(cr.Name), common.Urlencode(objRec.Name))
 					req, err := http.NewRequest("HEAD", url, nil)
 					req.Header.Set("X-Backend-Storage-Policy-Index", strconv.FormatInt(policy, 10))
